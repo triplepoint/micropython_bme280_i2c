@@ -87,7 +87,6 @@ class BME280_I2C:
         self._soft_reset()
         self._load_calibration_data()
 
-
     def _read_chip_id(self):
         """
         Read the chip ID from the sensor and verify it's correct.
@@ -101,7 +100,6 @@ class BME280_I2C:
             sleep_ms(1)
         raise Exception("Couldn't read BME280 chip ID after 5 attempts.")
 
-
     def _soft_reset(self):
         """
         Write the reset command to the sensor's reset address.
@@ -109,7 +107,6 @@ class BME280_I2C:
         """
         self.i2c.writeto_mem(self.address, _BME280_RESET_ADDR, bytearray([0xB6]))
         sleep_ms(2)
-
 
     def _load_calibration_data(self):
         """
@@ -152,7 +149,6 @@ class BME280_I2C:
         # Initialize the cal_t_fine carry-over value used during compensation
         self.cal_t_fine = 0
 
-
     def get_measurement_settings(self):
         """
         Return a parsed set of the sensor's measurement settings as a dict
@@ -172,7 +168,6 @@ class BME280_I2C:
             "standby_time": (config    & 0b11100000) >> 5,
         }
 
-
     def set_measurement_settings(self, settings: dict):
         """
         Set the sensor's settings for each measurement's oversampling,
@@ -189,19 +184,21 @@ class BME280_I2C:
         self._ensure_sensor_is_asleep()
         self._write_measurement_settings(settings)
 
-
     def _validate_settings(self, settings: dict):
-        oversampling_options = [BME280_NO_OVERSAMPLING, BME280_OVERSAMPLING_1X,
+        oversampling_options = [
+            BME280_NO_OVERSAMPLING, BME280_OVERSAMPLING_1X,
             BME280_OVERSAMPLING_2X, BME280_OVERSAMPLING_4X,
             BME280_OVERSAMPLING_8X, BME280_OVERSAMPLING_16X]
 
-        filter_options = [BME280_STANDBY_TIME_500_US,
+        filter_options = [
+            BME280_STANDBY_TIME_500_US,
             BME280_STANDBY_TIME_62_5_MS, BME280_STANDBY_TIME_125_MS,
             BME280_STANDBY_TIME_250_MS, BME280_STANDBY_TIME_500_MS,
             BME280_STANDBY_TIME_1000_MS, BME280_STANDBY_TIME_10_MS,
             BME280_STANDBY_TIME_20_MS]
 
-        standby_time_options = [BME280_FILTER_COEFF_OFF, BME280_FILTER_COEFF_2,
+        standby_time_options = [
+            BME280_FILTER_COEFF_OFF, BME280_FILTER_COEFF_2,
             BME280_FILTER_COEFF_4, BME280_FILTER_COEFF_8,
             BME280_FILTER_COEFF_16]
 
@@ -220,7 +217,6 @@ class BME280_I2C:
         if 'standby_time' in settings:
             if settings['standby_time'] not in standby_time_options:
                 raise ValueError("standby_time must be one of the standby time duration defines")
-
 
     def _write_measurement_settings(self, settings: dict):
         # Read in the existing configuration, to modify
@@ -254,7 +250,6 @@ class BME280_I2C:
                 newval = newval & 0b00011111 | (settings['standby_time'] << 5)
             self.i2c.writeto_mem(self.address, _BME280_CONFIG_ADDR, bytearray([newval]))
 
-
     def get_power_mode(self):
         """
         Result will be one of BME280_SLEEP_MODE, BME280_FORCED_MODE, or
@@ -263,7 +258,6 @@ class BME280_I2C:
         """
         mem = self.i2c.readfrom_mem(self.address, _BME280_PWR_CTRL_ADDR, 1)
         return mem[0] & 0b00000011
-
 
     def set_power_mode(self, new_power_mode: int):
         """
@@ -286,7 +280,6 @@ class BME280_I2C:
         newval = mem[0] & 0b11111100 | new_power_mode
         self.i2c.writeto_mem(self.address, _BME280_PWR_CTRL_ADDR, bytearray([newval]))
 
-
     def _ensure_sensor_is_asleep(self):
         """
         If the sensor mode isn't already "sleep", then put it to sleep.
@@ -298,7 +291,6 @@ class BME280_I2C:
             settings = self.get_measurement_settings()
             self._soft_reset()
             self._write_measurement_settings(settings)
-
 
     def get_measurement(self):
         """
@@ -312,7 +304,6 @@ class BME280_I2C:
             "pressure":    self._compensate_pressure(uncompensated_data['pressure']),
             "humidity":    self._compensate_humidity(uncompensated_data['humidity']),
         }
-
 
     def _read_uncompensated_data(self):
         # Read the uncompensated temperature, pressure, and humidity data
@@ -331,7 +322,6 @@ class BME280_I2C:
             "humidity":    (hum_msb << 8) | (hum_lsb),
         }
 
-
     def _compensate_temperature(self, adc_T: int) -> float:
         """
         Output value of “25.0” equals 25.0 DegC.
@@ -339,26 +329,25 @@ class BME280_I2C:
         See the floating-point implementation in the reference library:
         https://github.com/BoschSensortec/BME280_driver/blob/bme280_v3.3.4/bme280.c#L879
         """
-    	temperature_min = -40
-    	temperature_max = 85
+        temperature_min = -40
+        temperature_max = 85
 
-    	var1 = (adc_T / 16384.0) - (self.cal_dig_T1 / 1024.0)
-    	var1 = var1 * self.cal_dig_T2
+        var1 = (adc_T / 16384.0) - (self.cal_dig_T1 / 1024.0)
+        var1 = var1 * self.cal_dig_T2
 
         var2 = (adc_T / 131072.0) - (self.cal_dig_T1 / 8192.0)
-    	var2 = var2 * var2 * self.cal_dig_T3
+        var2 = var2 * var2 * self.cal_dig_T3
 
         self.cal_t_fine = int(var1 + var2)
 
         temperature = (var1 + var2) / 5120.0
 
-    	if temperature < temperature_min:
-    		temperature = temperature_min
-    	elif temperature > temperature_max:
-    		temperature = temperature_max
+        if temperature < temperature_min:
+            temperature = temperature_min
+        elif temperature > temperature_max:
+            temperature = temperature_max
 
-    	return temperature
-
+        return temperature
 
     def _compensate_pressure(self, adc_P: int) -> float:
         """
@@ -368,38 +357,37 @@ class BME280_I2C:
         https://github.com/BoschSensortec/BME280_driver/blob/bme280_v3.3.4/bme280.c#L879
         """
         pressure_min = 30000.0
-    	pressure_max = 110000.0
+        pressure_max = 110000.0
 
-    	var1 = (self.cal_t_fine / 2.0) - 64000.0
+        var1 = (self.cal_t_fine / 2.0) - 64000.0
 
         var2 = var1 * var1 * self.cal_dig_P6 / 32768.0
-    	var2 = var2 + var1 * self.cal_dig_P5 * 2.0
-    	var2 = (var2 / 4.0) + (self.cal_dig_P4 * 65536.0)
+        var2 = var2 + var1 * self.cal_dig_P5 * 2.0
+        var2 = (var2 / 4.0) + (self.cal_dig_P4 * 65536.0)
 
         var3 = self.cal_dig_P3 * var1 * var1 / 524288.0
 
         var1 = (var3 + self.cal_dig_P2 * var1) / 524288.0
-    	var1 = (1.0 + var1 / 32768.0) * self.cal_dig_P1
+        var1 = (1.0 + var1 / 32768.0) * self.cal_dig_P1
 
         # avoid exception caused by division by zero
-    	if var1:
-    		pressure = 1048576.0 - adc_P
-    		pressure = (pressure - (var2 / 4096.0)) * 6250.0 / var1
-    		var1 = self.cal_dig_P9 * pressure * pressure / 2147483648.0
-    		var2 = pressure * self.cal_dig_P8 / 32768.0
-    		pressure = pressure + (var1 + var2 + self.cal_dig_P7) / 16.0
+        if var1:
+            pressure = 1048576.0 - adc_P
+            pressure = (pressure - (var2 / 4096.0)) * 6250.0 / var1
+            var1 = self.cal_dig_P9 * pressure * pressure / 2147483648.0
+            var2 = pressure * self.cal_dig_P8 / 32768.0
+            pressure = pressure + (var1 + var2 + self.cal_dig_P7) / 16.0
 
-    		if pressure < pressure_min:
-    			pressure = pressure_min
-    		elif pressure > pressure_max:
-    			pressure = pressure_max
+            if pressure < pressure_min:
+                pressure = pressure_min
+            elif pressure > pressure_max:
+                pressure = pressure_max
 
-    	else:
+        else:
             # Invalid case
-    		pressure = pressure_min
+            pressure = pressure_min
 
-    	return pressure
-
+        return pressure
 
     def _compensate_humidity(self, adc_H: int) -> float:
         """
@@ -408,10 +396,10 @@ class BME280_I2C:
         See the floating-point implementation in the reference library:
         https://github.com/BoschSensortec/BME280_driver/blob/bme280_v3.3.4/bme280.c#L879
         """
-    	humidity_min = 0.0
-    	humidity_max = 100.0
+        humidity_min = 0.0
+        humidity_max = 100.0
 
-    	var1 = self.cal_t_fine - 76800.0
+        var1 = self.cal_t_fine - 76800.0
 
         var2 = self.cal_dig_H4 * 64.0 + (self.cal_dig_H5 / 16384.0) * var1
 
@@ -422,13 +410,13 @@ class BME280_I2C:
         var5 = 1.0 + (self.cal_dig_H3 / 67108864.0) * var1
 
         var6 = 1.0 + (self.cal_dig_H6 / 67108864.0) * var1 * var5
-    	var6 = var3 * var4 * (var5 * var6)
+        var6 = var3 * var4 * (var5 * var6)
 
         humidity = var6 * (1.0 - self.cal_dig_H1 * var6 / 524288.0)
 
-    	if humidity > humidity_max:
-    		humidity = humidity_max
-    	elif humidity < humidity_min:
-    		humidity = humidity_min
+        if humidity > humidity_max:
+            humidity = humidity_max
+        elif humidity < humidity_min:
+            humidity = humidity_min
 
-    	return humidity
+        return humidity

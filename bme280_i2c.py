@@ -299,6 +299,9 @@ class BME280_I2C:
         """
         uncompensated_data = self._read_uncompensated_data()
 
+        # Be sure to call self._compensate_temperature() first, as it sets a
+        # global "fine" calibration value for the other two compensation
+        # functions
         return {
             "temperature": self._compensate_temperature(uncompensated_data['temperature']),
             "pressure":    self._compensate_pressure(uncompensated_data['pressure']),
@@ -322,61 +325,182 @@ class BME280_I2C:
             "humidity":    (hum_msb << 8) | (hum_lsb),
         }
 
+    ##
+    # Float Implementations
+    ##
+
+    # def _compensate_temperature(self, adc_T: int) -> float:
+    #     """
+    #     Output value of “25.0” equals 25.0 DegC.
+    #
+    #     See the floating-point implementation in the reference library:
+    #     https://github.com/BoschSensortec/BME280_driver/blob/bme280_v3.3.4/bme280.c#L884
+    #     """
+    #     temperature_min = -40
+    #     temperature_max = 85
+    #
+    #     var1 = (adc_T / 16384.0) - (self.cal_dig_T1 / 1024.0)
+    #     var1 = var1 * self.cal_dig_T2
+    #
+    #     var2 = (adc_T / 131072.0) - (self.cal_dig_T1 / 8192.0)
+    #     var2 = var2 * var2 * self.cal_dig_T3
+    #
+    #     self.cal_t_fine = int(var1 + var2)
+    #
+    #     temperature = (var1 + var2) / 5120.0
+    #
+    #     if temperature < temperature_min:
+    #         temperature = temperature_min
+    #     elif temperature > temperature_max:
+    #         temperature = temperature_max
+    #
+    #     return temperature
+
+    # def _compensate_pressure(self, adc_P: int) -> float:
+    #     """
+    #     Output value of “96386.0” equals 96386 Pa = 963.86 hPa
+    #
+    #     See the floating-point implementation in the reference library:
+    #     https://github.com/BoschSensortec/BME280_driver/blob/bme280_v3.3.4/bme280.c#L912
+    #     """
+    #     pressure_min = 30000.0
+    #     pressure_max = 110000.0
+    #
+    #     var1 = (self.cal_t_fine / 2.0) - 64000.0
+    #
+    #     var2 = var1 * var1 * self.cal_dig_P6 / 32768.0
+    #     var2 = var2 + (var1 * self.cal_dig_P5 * 2.0)
+    #     var2 = (var2 / 4.0) + (self.cal_dig_P4 * 65536.0)
+    #
+    #     var3 = self.cal_dig_P3 * var1 * var1 / 524288.0
+    #
+    #     var1 = (var3 + self.cal_dig_P2 * var1) / 524288.0
+    #     var1 = (1.0 + var1 / 32768.0) * self.cal_dig_P1
+    #
+    #     # avoid exception caused by division by zero
+    #     if var1:
+    #         pressure = 1048576.0 - adc_P
+    #         pressure = (pressure - (var2 / 4096.0)) * 6250.0 / var1
+    #         var1 = self.cal_dig_P9 * pressure * pressure / 2147483648.0
+    #         var2 = pressure * self.cal_dig_P8 / 32768.0
+    #         pressure = pressure + (var1 + var2 + self.cal_dig_P7) / 16.0
+    #
+    #         if pressure < pressure_min:
+    #             pressure = pressure_min
+    #         elif pressure > pressure_max:
+    #             pressure = pressure_max
+    #
+    #     else:
+    #         # Invalid case
+    #         pressure = pressure_min
+    #
+    #     return pressure
+
+    # def _compensate_humidity(self, adc_H: int) -> float:
+    #     """
+    #     Output value between 0.0 and 100.0, where 100.0 is 100%RH
+    #
+    #     See the floating-point implementation in the reference library:
+    #     https://github.com/BoschSensortec/BME280_driver/blob/bme280_v3.3.4/bme280.c#L952
+    #     """
+    #     humidity_min = 0.0
+    #     humidity_max = 100.0
+    #
+    #     var1 = self.cal_t_fine - 76800.0
+    #
+    #     var2 = self.cal_dig_H4 * 64.0 + (self.cal_dig_H5 / 16384.0) * var1
+    #
+    #     var3 = adc_H - var2
+    #
+    #     var4 = self.cal_dig_H2 / 65536.0
+    #
+    #     var5 = 1.0 + (self.cal_dig_H3 / 67108864.0) * var1
+    #
+    #     var6 = 1.0 + (self.cal_dig_H6 / 67108864.0) * var1 * var5
+    #     var6 = var3 * var4 * (var5 * var6)
+    #
+    #     humidity = var6 * (1.0 - self.cal_dig_H1 * var6 / 524288.0)
+    #
+    #     if humidity > humidity_max:
+    #         humidity = humidity_max
+    #     elif humidity < humidity_min:
+    #         humidity = humidity_min
+    #
+    #     return humidity
+
+    ##
+    # 32-Bit Integer Implementations
+    ##
+
     def _compensate_temperature(self, adc_T: int) -> float:
         """
         Output value of “25.0” equals 25.0 DegC.
 
-        See the floating-point implementation in the reference library:
-        https://github.com/BoschSensortec/BME280_driver/blob/bme280_v3.3.4/bme280.c#L879
+        See the integer implementation in the data sheet, section 4.2.3
+        And the reference library:
+        https://github.com/BoschSensortec/BME280_driver/blob/bme280_v3.3.4/bme280.c#L987
         """
-        temperature_min = -40
-        temperature_max = 85
+        temperature_min = -4000
+        temperature_max = 8500
 
-        var1 = (adc_T / 16384.0) - (self.cal_dig_T1 / 1024.0)
-        var1 = var1 * self.cal_dig_T2
+        var1 = (((adc_T // 8) - (self.cal_dig_T1 * 2)) * self.cal_dig_T2) // 2048
 
-        var2 = (adc_T / 131072.0) - (self.cal_dig_T1 / 8192.0)
-        var2 = var2 * var2 * self.cal_dig_T3
+        var2 = (((((adc_T // 16) - self.cal_dig_T1) * ((adc_T // 16) - self.cal_dig_T1)) // 4096) * self.cal_dig_T3) // 16384
 
-        self.cal_t_fine = int(var1 + var2)
+        self.cal_t_fine = var1 + var2
 
-        temperature = (var1 + var2) / 5120.0
+        temperature = (self.cal_t_fine * 5 + 128) // 256
 
         if temperature < temperature_min:
             temperature = temperature_min
         elif temperature > temperature_max:
             temperature = temperature_max
 
-        return temperature
+        return temperature / 100
 
     def _compensate_pressure(self, adc_P: int) -> float:
         """
         Output value of “96386.0” equals 96386 Pa = 963.86 hPa
 
-        See the floating-point implementation in the reference library:
-        https://github.com/BoschSensortec/BME280_driver/blob/bme280_v3.3.4/bme280.c#L879
+        See the 32-bit integer implementation in the data sheet, section 4.2.3
+        And the reference library:
+        https://github.com/BoschSensortec/BME280_driver/blob/bme280_v3.3.4/bme280.c#L1059
+
+        Note that there's a 64-bit version of this function in the reference
+        library on line 1016 that we're leaving unimplemented.
         """
-        pressure_min = 30000.0
-        pressure_max = 110000.0
+        pressure_min = 30000
+        pressure_max = 110000
 
-        var1 = (self.cal_t_fine / 2.0) - 64000.0
+        var1 = (self.cal_t_fine // 2) - 64000
 
-        var2 = var1 * var1 * self.cal_dig_P6 / 32768.0
-        var2 = var2 + var1 * self.cal_dig_P5 * 2.0
-        var2 = (var2 / 4.0) + (self.cal_dig_P4 * 65536.0)
+        var2 = (((var1 // 4) * (var1 // 4)) // 2048) * self.cal_dig_P6
+        var2 = var2 + ((var1 * self.cal_dig_P5) * 2)
+        var2 = (var2 // 4) + (self.cal_dig_P4 * 65536)
 
-        var3 = self.cal_dig_P3 * var1 * var1 / 524288.0
+        var3 = (self.cal_dig_P3 * (((var1 // 4) * (var1 // 4)) // 8192)) // 8
 
-        var1 = (var3 + self.cal_dig_P2 * var1) / 524288.0
-        var1 = (1.0 + var1 / 32768.0) * self.cal_dig_P1
+        var4 = (self.cal_dig_P2 * var1) // 2
+
+        var1 = (var3 + var4) // 262144
+        var1 = ((32768 + var1) * self.cal_dig_P1) // 32768
 
         # avoid exception caused by division by zero
         if var1:
-            pressure = 1048576.0 - adc_P
-            pressure = (pressure - (var2 / 4096.0)) * 6250.0 / var1
-            var1 = self.cal_dig_P9 * pressure * pressure / 2147483648.0
-            var2 = pressure * self.cal_dig_P8 / 32768.0
-            pressure = pressure + (var1 + var2 + self.cal_dig_P7) / 16.0
+            var5 = 1048576 - adc_P
+
+            pressure = (var5 - (var2 // 4096)) * 3125
+
+            if pressure < 0x80000000:
+                pressure = (pressure << 1) // var1
+            else:
+                pressure = (pressure // var1) * 2
+
+            var1 = (self.cal_dig_P9 * (((pressure // 8) * (pressure // 8)) // 8192)) // 4096
+
+            var2 = (((pressure // 4)) * self.cal_dig_P8) // 8192
+
+            pressure = pressure + ((var1 + var2 + self.cal_dig_P7) // 16)
 
             if pressure < pressure_min:
                 pressure = pressure_min
@@ -394,29 +518,42 @@ class BME280_I2C:
         Output value between 0.0 and 100.0, where 100.0 is 100%RH
 
         See the floating-point implementation in the reference library:
-        https://github.com/BoschSensortec/BME280_driver/blob/bme280_v3.3.4/bme280.c#L879
+        https://github.com/BoschSensortec/BME280_driver/blob/bme280_v3.3.4/bme280.c#1108
         """
-        humidity_min = 0.0
-        humidity_max = 100.0
 
-        var1 = self.cal_t_fine - 76800.0
+        humidity_max = 102400
 
-        var2 = self.cal_dig_H4 * 64.0 + (self.cal_dig_H5 / 16384.0) * var1
+        var1 = self.cal_t_fine - 76800
 
-        var3 = adc_H - var2
+        var2 = adc_H * 16384
 
-        var4 = self.cal_dig_H2 / 65536.0
+        var3 = self.cal_dig_H4 * 1048576
 
-        var5 = 1.0 + (self.cal_dig_H3 / 67108864.0) * var1
+        var4 = self.cal_dig_H5 * var1
 
-        var6 = 1.0 + (self.cal_dig_H6 / 67108864.0) * var1 * var5
-        var6 = var3 * var4 * (var5 * var6)
+        var5 = (((var2 - var3) - var4) + 16384) // 32768
 
-        humidity = var6 * (1.0 - self.cal_dig_H1 * var6 / 524288.0)
+        var2 = (var1 * self.cal_dig_H6) // 1024
 
-        if humidity > humidity_max:
+        var3 = (var1 * self.cal_dig_H3) // 2048
+
+        var4 = ((var2 * (var3 + 32768)) // 1024) + 2097152
+
+        var2 = ((var4 * self.cal_dig_H2) + 8192) // 16384
+
+        var3 = var5 * var2
+
+        var4 = ((var3 // 32768) * (var3 // 32768)) // 128
+
+        var5 = var3 - ((var4 * self.cal_dig_H1) // 16)
+        if var5 < 0:
+            var5 = 0
+        if var5 > 419430400:
+            var5 = 419430400
+
+        humidity = var5 // 4096
+
+        if (humidity > humidity_max):
             humidity = humidity_max
-        elif humidity < humidity_min:
-            humidity = humidity_min
 
-        return humidity
+        return humidity / 1024

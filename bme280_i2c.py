@@ -161,11 +161,11 @@ class BME280_I2C:
         ctrl_hum, _, ctrl_meas, config = unpack("<BBBB", mem)
 
         return {
-            "osr_h":        (ctrl_hum  & 0b00000111),
-            "osr_p":        (ctrl_meas & 0b00011100) >> 2,
-            "osr_t":        (ctrl_meas & 0b11100000) >> 5,
-            "filter":       (config    & 0b00011100) >> 2,
-            "standby_time": (config    & 0b11100000) >> 5,
+            "osr_h":        (ctrl_hum & 0b00000111),
+            "osr_p":        (ctrl_meas >> 2) & 0b00000111,
+            "osr_t":        (ctrl_meas >> 5) & 0b00000111,
+            "filter":       (config >> 2) & 0b00000111,
+            "standby_time": (config >> 5) & 0b00000111,
         }
 
     def set_measurement_settings(self, settings: dict):
@@ -191,16 +191,16 @@ class BME280_I2C:
             BME280_OVERSAMPLING_8X, BME280_OVERSAMPLING_16X]
 
         filter_options = [
+            BME280_FILTER_COEFF_OFF, BME280_FILTER_COEFF_2,
+            BME280_FILTER_COEFF_4, BME280_FILTER_COEFF_8,
+            BME280_FILTER_COEFF_16]
+
+        standby_time_options = [
             BME280_STANDBY_TIME_500_US,
             BME280_STANDBY_TIME_62_5_MS, BME280_STANDBY_TIME_125_MS,
             BME280_STANDBY_TIME_250_MS, BME280_STANDBY_TIME_500_MS,
             BME280_STANDBY_TIME_1000_MS, BME280_STANDBY_TIME_10_MS,
             BME280_STANDBY_TIME_20_MS]
-
-        standby_time_options = [
-            BME280_FILTER_COEFF_OFF, BME280_FILTER_COEFF_2,
-            BME280_FILTER_COEFF_4, BME280_FILTER_COEFF_8,
-            BME280_FILTER_COEFF_16]
 
         if 'osr_h' in settings:
             if settings['osr_h'] not in oversampling_options:
@@ -225,7 +225,7 @@ class BME280_I2C:
 
         # Make any changes necessary to the ctrl_hum register
         if "osr_h" in settings:
-            newval = ctrl_hum & 0b11111000 | settings['osr_h']
+            newval = (ctrl_hum & 0b11111000) | (settings['osr_h'] & 0b00000111)
             self.i2c.writeto_mem(self.address, _BME280_CTRL_HUM_ADDR, bytearray([newval]))
 
             # according to the data sheet, ctrl_hum needs a write to
@@ -236,18 +236,18 @@ class BME280_I2C:
         if "osr_p" in settings or "osr_t" in settings:
             newval = ctrl_meas
             if "osr_p" in settings:
-                newval = newval & 0b11100011 | (settings['osr_p'] << 2)
+                newval = (newval & 0b11100011) | ((settings['osr_p'] << 2) & 0b00011100)
             if "osr_t" in settings:
-                newval = newval & 0b00011111 | (settings['osr_t'] << 5)
+                newval = (newval & 0b00011111) | ((settings['osr_t'] << 5) & 0b11100000)
             self.i2c.writeto_mem(self.address, _BME280_CTRL_MEAS_ADDR, bytearray([newval]))
 
         # Make any changes necessary to the config register
         if "filter" in settings or "standby_time" in settings:
             newval = config
             if "filter" in settings:
-                newval = newval & 0b11100011 | (settings['filter'] << 2)
+                newval = (newval & 0b11100011) | ((settings['filter'] << 2) & 0b00011100)
             if "standby_time" in settings:
-                newval = newval & 0b00011111 | (settings['standby_time'] << 5)
+                newval = (newval & 0b00011111) | ((settings['standby_time'] << 5) & 0b11100000)
             self.i2c.writeto_mem(self.address, _BME280_CONFIG_ADDR, bytearray([newval]))
 
     def get_power_mode(self):
@@ -257,7 +257,7 @@ class BME280_I2C:
         See the data sheet, section 3.3
         """
         mem = self.i2c.readfrom_mem(self.address, _BME280_PWR_CTRL_ADDR, 1)
-        return mem[0] & 0b00000011
+        return (mem[0] & 0b00000011)
 
     def set_power_mode(self, new_power_mode: int):
         """
@@ -277,7 +277,7 @@ class BME280_I2C:
         # Read the current register, mask out and set the new power mode,
         # and write the register back to the device.
         mem = self.i2c.readfrom_mem(self.address, _BME280_PWR_CTRL_ADDR, 1)
-        newval = mem[0] & 0b11111100 | new_power_mode
+        newval = (mem[0] & 0b11111100) | (new_power_mode & 0b00000011)
         self.i2c.writeto_mem(self.address, _BME280_PWR_CTRL_ADDR, bytearray([newval]))
 
     def _ensure_sensor_is_asleep(self):
